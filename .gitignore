@@ -2,7 +2,7 @@
 .cache/
 
 # Cmake Script
-rebuild.sh
+# rebuild.sh
 
 # Build directory
 build/

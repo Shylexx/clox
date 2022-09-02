@@ -1,3 +1,6 @@
+# LSP server cache
+.cache/
+
 # Cmake Script
 rebuild.sh
 

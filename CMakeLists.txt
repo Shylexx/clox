@@ -6,6 +6,7 @@ set(HEADER_FILES
   src/chunk.h
   src/memory.h
   src/debug.h
+  src/value.h
 )
 
 set(SOURCE_FILES
@@ -13,6 +14,7 @@ set(SOURCE_FILES
   src/chunk.c
   src/memory.c
   src/debug.c
+  src/value.c
 )
 
 

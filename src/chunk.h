@@ -2,11 +2,13 @@
 #define clox_chunk_h
 
 #include "common.h"
+#include "value.h"
 
 // In our bytecode, each instruction has a one-byte operation code
 // Controls what kind of instruction we are dealing with
 typedef enum {
   OP_RETURN,
+  OP_CONSTANT,
 } OpCode;
 
 // dynamic array
@@ -16,6 +18,8 @@ typedef struct {
   int count;
   int capacity;
   uint8_t* code;
+  int* lines;
+  ValueArray constants;
 } Chunk;
 
 /* It works like an std vector, when the capacity is reached
@@ -23,6 +27,7 @@ typedef struct {
 
 void initChunk(Chunk* chunk);
 void freeChunk(Chunk* chunk);
-void writeChunk(Chunk* chunk, uint8_t byte);
+void writeChunk(Chunk* chunk, uint8_t byte, int line);
+int addConstant(Chunk* chunk, Value value);
 
 #endif

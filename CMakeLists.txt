@@ -7,6 +7,7 @@ set(HEADER_FILES
   src/memory.h
   src/debug.h
   src/value.h
+  src/vm.h
 )
 
 set(SOURCE_FILES
@@ -15,6 +16,7 @@ set(SOURCE_FILES
   src/memory.c
   src/debug.c
   src/value.c
+  src/vm.c
 )
 
 

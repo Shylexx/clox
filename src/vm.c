@@ -41,6 +41,16 @@ static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 // Reads the next byte of bytecode, and looks up the Value in the chunks constant table
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+// Binary Operators (main 4 binary ops are same but different C operator)
+// Do while loop in a macro is a C trick to attach block to a single scope
+// Takes the top two values (the operands) by popping
+// Performs the operation on the two values and pushes it back on
+#define BINARY_OP(op) \
+  do { \
+    double b = pop(); \
+    double a = pop(); \
+    push(a op b); \
+  } while (false)
 
   // Each iteration of this loop reads and executes 1 bytecode instruction
   for (;;) {
@@ -64,6 +74,11 @@ static InterpretResult run() {
         push(constant);
         break;
       }
+      case OP_ADD:      BINARY_OP(+); break;
+      case OP_SUBTRACT: BINARY_OP(-); break;
+      case OP_MULTIPLY: BINARY_OP(*); break;
+      case OP_DIVIDE:   BINARY_OP(/); break;
+      case OP_NEGATE: push(-pop()); break;
       case OP_RETURN: {
         printValue(pop());
         printf("\n");
@@ -75,6 +90,7 @@ static InterpretResult run() {
 // Undefine our macros like good little boys
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef BINARY_OP
 }
 
 InterpretResult interpret(Chunk *chunk) {

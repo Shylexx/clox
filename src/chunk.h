@@ -8,6 +8,12 @@
 // Controls what kind of instruction we are dealing with
 typedef enum {
   OP_RETURN,
+  // Binary Operators
+  OP_ADD,
+  OP_SUBTRACT,
+  OP_MULTIPLY,
+  OP_DIVIDE,
+  OP_NEGATE,
   OP_CONSTANT,
 } OpCode;
 

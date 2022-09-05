@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Dumps chunks when the compiler finishes.
+#define DEBUG_PRINT_CODE
 // When this is defined, the VM disassembles and prints instructions
 // right before they are executed.
 #define DEBUG_TRACE_EXECUTION

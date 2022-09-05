@@ -8,6 +8,8 @@ set(HEADER_FILES
   src/debug.h
   src/value.h
   src/vm.h
+  src/compiler.h
+  src/scanner.h
 )
 
 set(SOURCE_FILES
@@ -17,6 +19,8 @@ set(SOURCE_FILES
   src/debug.c
   src/value.c
   src/vm.c
+  src/compiler.c
+  src/scanner.c
 )
 
 

@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -188,6 +189,8 @@ Token scanToken() {
   if(isAtEnd()) return makeToken(TOKEN_EOF);
 
   char c = advance();
+  if (isAlpha(c)) return identifier();
+
   if (isDigit(c)) return number();
 
   switch (c) {
@@ -220,5 +223,8 @@ Token scanToken() {
             return string();
   }
 
-  return errorToken("Unexpected character.");
+  char* errorMessage;
+  errorMessage = (char*)malloc(30);
+  sprintf(errorMessage, "Unexpected Character: %c", c);
+  return errorToken(errorMessage);
 }

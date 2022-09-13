@@ -3,6 +3,10 @@
 
 #include "common.h"
 
+// Allocates an array with given type and count
+#define ALLOCATE(type, count) \
+  (type*)reallocate(NULL, 0, sizeof(type) * (count))
+
 // Calculates new array capacity
 // Doubles current capacity or sets it to 8 if it is 0
 #define GROW_CAPACITY(capacity) \

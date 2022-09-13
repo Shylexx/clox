@@ -10,6 +10,7 @@ set(HEADER_FILES
   src/vm.h
   src/compiler.h
   src/scanner.h
+  src/object.h
 )
 
 set(SOURCE_FILES
@@ -21,6 +22,7 @@ set(SOURCE_FILES
   src/vm.c
   src/compiler.c
   src/scanner.c
+  src/object.c
 )
 
 

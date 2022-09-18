@@ -11,6 +11,7 @@ set(HEADER_FILES
   src/compiler.h
   src/scanner.h
   src/object.h
+  src/table.h
 )
 
 set(SOURCE_FILES
@@ -23,6 +24,7 @@ set(SOURCE_FILES
   src/compiler.c
   src/scanner.c
   src/object.c
+  src/table.c
 )
 
 

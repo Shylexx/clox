@@ -14,6 +14,8 @@ typedef enum {
   OP_MULTIPLY,
   OP_DIVIDE,
   OP_EQUAL,
+  OP_POP,
+  OP_DEFINE_GLOBAL,
   OP_GREATER,
   OP_LESS,
   OP_NOT,
@@ -22,6 +24,7 @@ typedef enum {
   OP_NIL,
   OP_TRUE,
   OP_FALSE,
+  OP_PRINT,
 } OpCode;
 
 // dynamic array

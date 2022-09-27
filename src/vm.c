@@ -35,10 +35,12 @@ static void runtimeError(const char* format, ...) {
 void initVM() {
   resetStack();
   vm.objects = NULL;
+  initTable(&vm.globals);
   initTable(&vm.strings);
 }
 
 void freeVM() {
+  freeTable(&vm.globals);
   // Free interned strings
   freeTable(&vm.strings);
   // Free remaining heap objects at end of execution
@@ -90,6 +92,7 @@ static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 // Reads the next byte of bytecode, and looks up the Value in the chunks constant table
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 // Binary Operators (main 4 binary ops are same but different C operator)
 // Do while loop in a macro is a C trick to attach block to a single scope
 // Takes the top two values (the operands) by popping
@@ -164,15 +167,27 @@ static InterpretResult run() {
         }
         push(NUMBER_VAL(-AS_NUMBER(pop())));
         break;
-      case OP_RETURN: {
+      case OP_PRINT: {
         printValue(pop());
         printf("\n");
+        break;
+      }
+      case OP_POP: pop(); break;
+      case OP_DEFINE_GLOBAL: {
+        ObjString* name = READ_STRING();
+        tableSet(&vm.globals, name, peek(0));
+        pop();
+        break;
+      }
+      case OP_RETURN: {
+        // Exit interpreter
         return INTERPRET_OK;
       }
     }
   }
 
 // Undefine our macros like good little boys
+#undef READ_STRING
 #undef READ_BYTE
 #undef READ_CONSTANT
 #undef BINARY_OP

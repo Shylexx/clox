@@ -95,6 +95,16 @@ static void consume(TokenType type, const char* message) {
   errorAtCurrent(message);
 }
 
+static bool check(TokenType type) {
+  return parser.current.type == type;
+}
+
+static bool match(TokenType type) {
+  if(!check(type)) return false;
+  advance();
+  return true;
+}
+
 // Writes a byte to the chunk
 static void emitByte(uint8_t byte) {
   writeChunk(currentChunk(), byte, parser.previous.line);
@@ -137,8 +147,24 @@ static void endCompiler() {
 
 // Forward Declaration
 static void expression();
+static void statement();
+static void declaration();
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
+
+// Stores the identifier in the constant table, and the bytecode instruction refers to it by table index
+static uint8_t identifierConstant(Token* name) {
+  return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
+}
+
+static uint8_t parseVariable(const char* errorMessage) {
+  consume(TOKEN_IDENTIFIER, errorMessage);
+  return identifierConstant(&parser.previous);
+}
+
+static void defineVariable(uint8_t global) {
+  emitBytes(OP_DEFINE_GLOBAL, global);
+}
 
 static void binary() {
   TokenType operatorType = parser.previous.type;
@@ -171,7 +197,78 @@ static void literal() {
 
 static void expression() {
   parsePrecedence(PREC_ASSIGNMENT);
+}
 
+static void varDeclaration() {
+  uint8_t global = parseVariable("Expected variable name.");
+
+  if (match(TOKEN_EQUAL)) {
+    expression();
+  } else {
+    // If no initializer is provided, assign nil implicitly
+    // var a; is equal to var a = nil;
+    emitByte(OP_NIL);
+  }
+  consume(TOKEN_SEMICOLON,
+      "Expected ';' after variable declaration.");
+
+  defineVariable(global);
+}
+
+static void expressionStatement() {
+  expression();
+  consume(TOKEN_SEMICOLON, "Expected ';' after expression.");
+  emitByte(OP_POP);
+}
+
+static void printStatement() {
+  expression();
+  consume(TOKEN_SEMICOLON, "Expect ';' after value.");
+  emitByte(OP_PRINT);
+}
+
+static void synchronize() {
+  parser.panicMode = false;
+
+  while (parser.current.type != TOKEN_EOF) {
+    // Return when we find a statement ender or a keyword that would begin the next statement
+    if (parser.previous.type == TOKEN_SEMICOLON) return;
+    switch (parser.current.type) {
+      case TOKEN_CLASS:
+      case TOKEN_FUN:
+      case TOKEN_VAR:
+      case TOKEN_FOR:
+      case TOKEN_IF:
+      case TOKEN_WHILE:
+      case TOKEN_PRINT:
+      case TOKEN_RETURN:
+        return;
+
+      default:
+        ; // Do nothing
+    }
+
+    advance();
+  }
+}
+
+static void declaration() {
+  if (match(TOKEN_VAR)) {
+    varDeclaration();
+  } else {
+    statement();
+  }
+
+  // Synchronize if we had a compile error in previous statement
+  if (parser.panicMode) synchronize();
+}
+
+static void statement() {
+  if (match(TOKEN_PRINT)) {
+    printStatement();
+  } else {
+    expressionStatement();
+  }
 }
 
 static void grouping() {
@@ -292,8 +389,11 @@ bool compile(const char *source, Chunk* chunk) {
   parser.panicMode = false;
 
   advance();
-  expression();
-  consume(TOKEN_EOF, "Expected end of expression.");
+
+  while(!match(TOKEN_EOF)) {
+    declaration();
+  }
+
   endCompiler();
   return !parser.hadError;
 }

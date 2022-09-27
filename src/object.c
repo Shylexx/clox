@@ -3,6 +3,7 @@
 
 #include "memory.h"
 #include "object.h"
+#include "table.h"
 #include "value.h"
 #include "vm.h"
 
@@ -27,6 +28,8 @@ static ObjString* allocateString(char* chars, int length, uint32_t hash) {
   string->length = length;
   string->chars = chars;
   string->hash = hash;
+  // Add string to the hash set of interned strings
+  tableSet(&vm.strings, string, NIL_VAL);
   return string;
 }
 
@@ -46,6 +49,13 @@ static uint32_t hashString(const char* key, int length) {
 // This takes ownership of the string.
 ObjString* takeString(char* chars, int length) {
   uint32_t hash = hashString(chars, length);
+  // Check if there is an already interned string
+  ObjString* interned = tableFindString(&vm.strings, chars, length, hash);
+  if (interned != NULL) {
+    FREE_ARRAY(char, chars, length + 1);
+    return interned;
+  }
+
   return allocateString(chars, length, hash);
 }
 
@@ -53,6 +63,9 @@ ObjString* takeString(char* chars, int length) {
 // copying the characters into the heap preemptively
 ObjString* copyString(const char* chars, int length) {
   uint32_t hash = hashString(chars, length);
+  // Check if there is an already interned Loxstring
+  ObjString* interned = tableFindString(&vm.strings, chars, length, hash);
+  if (interned != NULL) return interned;
   // Copies the characters in a string literal to the heap,
   // so that the resulting ObjString* owns its own characters
   // rather than pointing to the source code chars

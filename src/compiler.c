@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "chunk.h"
 #include "common.h"
@@ -175,12 +176,63 @@ static uint8_t identifierConstant(Token* name) {
   return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
 }
 
+static bool identifiersEqual(Token* a, Token* b) {
+  if (a->length != b->length) return false;
+  // If identifier lexeme is equal, its the same
+  return memcmp(a->start, b->start, a->length) == 0;
+}
+
+// Add local variable name to the compilers list along with its scope depth
+static void addLocal(Token name) {
+  // If we reach the max amount of vars per scope, error
+  if (current->localCount == UINT8_COUNT) {
+    error("Too many local variables in function.");
+    return;
+  }
+
+  Local* local = &current->locals[current->localCount++];
+  local->name = name;
+  local->depth = current->scopeDepth;
+}
+
+static void declareVariable() {
+  if (current->scopeDepth == 0) return;
+  // Cancel this if we are in top level scope
+
+  Token* name = &parser.previous;
+
+  // Prevent multiple variables with the same name in the same local scope
+  for (int i = current->localCount -1; i >= 0; i--) {
+    Local* local = &current->locals[i];
+    // If we reach the beginning or a variable opened by another scope, we know we have checked the current scope
+    if (local->depth != -1 && local->depth < current->scopeDepth) {
+      break;
+    }
+
+    if (identifiersEqual(name, &local->name)) {
+      error("Already a variable with this name in this scope.");
+    }
+  }
+
+  addLocal(*name);
+}
+
 static uint8_t parseVariable(const char* errorMessage) {
   consume(TOKEN_IDENTIFIER, errorMessage);
+  
+  declareVariable();
+  // Return early as locals are on the stack, not looked up by name unlike globals
+  if (current->scopeDepth > 0) return 0;
+
   return identifierConstant(&parser.previous);
 }
 
 static void defineVariable(uint8_t global) {
+  // If we are in a scope, do not define a global
+  if (current->scopeDepth > 0) {
+    return;
+  }
+
   emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
@@ -231,6 +283,13 @@ static void beginScope() {
 
 static void endScope() {
   current->scopeDepth--;
+
+  // Pop all of the locals off of the stack, the scope has ended.
+  while (current->localCount > 0
+      && current->locals[current->localCount -1].depth > current->scopeDepth) {
+    emitByte(OP_POP);
+    current->localCount--;
+  }
 }
 
 static void varDeclaration() {

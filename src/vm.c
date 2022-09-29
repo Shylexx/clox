@@ -225,6 +225,13 @@ static InterpretResult run() {
         vm.ip += offset;
         break;
       }
+      case OP_LOOP: {
+        uint16_t offset = READ_SHORT();
+        // Move the instruction pointer backwards by the offset,
+        // this takes us to the start of the loop
+        vm.ip -= offset;
+        break;
+      }
       case OP_RETURN: {
         // Exit interpreter
         return INTERPRET_OK;

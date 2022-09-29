@@ -129,6 +129,17 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
   emitByte(byte2);
 }
 
+static void emitLoop(int loopStart) {
+  emitByte(OP_LOOP);
+
+  // + 2 takes into account the size of the OP_LOOP instructions operands that much be jumped over
+  int offset = currentChunk()->count - loopStart + 2;
+  if (offset > UINT16_MAX) error("Loop body is too large.");
+
+  emitByte((offset >> 8) & 0xff);
+  emitByte(offset & 0xff);
+}
+
 static int emitJump(uint8_t instruction) {
   // Emits the bytecode instruction
   emitByte(instruction);
@@ -414,6 +425,25 @@ static void printStatement() {
   emitByte(OP_PRINT);
 }
 
+// While statements are the same as if statements,
+// except for the looping nature
+static void whileStatement() {
+  // record the start of the loop as the beginning,
+  // that way we reevaluate the condition each loop
+  int loopStart = currentChunk()->count;
+  consume(TOKEN_LEFT_PAREN, "Expected '(' after 'while'.");
+  expression();
+  consume(TOKEN_RIGHT_PAREN, "Expected ')' after while condition.");
+
+  int exitJump = emitJump(OP_JUMP_IF_FALSE);
+  emitByte(OP_POP);
+  statement();
+  emitLoop(loopStart);
+
+  patchJump(exitJump);
+  emitByte(OP_POP);
+}
+
 static void synchronize() {
   parser.panicMode = false;
 
@@ -455,6 +485,8 @@ static void statement() {
     printStatement();
   } else if (match(TOKEN_IF)) {
     ifStatement();
+  } else if (match(TOKEN_WHILE)) {
+    whileStatement();
   } else if (match(TOKEN_LEFT_BRACE)) {
     beginScope();
     block();

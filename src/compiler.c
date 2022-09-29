@@ -182,6 +182,24 @@ static bool identifiersEqual(Token* a, Token* b) {
   return memcmp(a->start, b->start, a->length) == 0;
 }
 
+static int resolveLocal(Compiler* compiler, Token* name) {
+  // iterate over all locals in the compiler,
+  // if a local is found with matching name we return its index
+  // We walk backward to find the most recent declaration,
+  // ensures inner locals shadow outer scope declared locals
+  for (int i = compiler->localCount -1; i >= 0; i--) {
+    Local* local = &compiler->locals[i];
+    if (identifiersEqual(name, &local->name)) {
+      if (local->depth == -1) {
+          error("Can't read local variable in its own initializer.");
+      }   
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 // Add local variable name to the compilers list along with its scope depth
 static void addLocal(Token name) {
   // If we reach the max amount of vars per scope, error
@@ -192,7 +210,8 @@ static void addLocal(Token name) {
 
   Local* local = &current->locals[current->localCount++];
   local->name = name;
-  local->depth = current->scopeDepth;
+  // -1 depth is 'uninitialized' state
+  local->depth = -1;
 }
 
 static void declareVariable() {
@@ -227,9 +246,15 @@ static uint8_t parseVariable(const char* errorMessage) {
   return identifierConstant(&parser.previous);
 }
 
+static void markInitialized() {
+  // Marks the current local variable as ready for use, by setting its depth
+  current->locals[current->localCount -1].depth = current->scopeDepth;
+}
+
 static void defineVariable(uint8_t global) {
   // If we are in a scope, do not define a global
   if (current->scopeDepth > 0) {
+    markInitialized();
     return;
   }
 
@@ -386,13 +411,25 @@ static void string(bool canAssign) {
 }
 
 static void namedVariable(Token name, bool canAssign) {
-  uint8_t arg = identifierConstant(&name);
+  uint8_t getOp, setOp;
+  int arg = resolveLocal(current, &name);
+  // if we find a local variable with given name
+  // use the local
+  if (arg != -1) {
+    getOp = OP_GET_LOCAL;
+    setOp = OP_SET_LOCAL;
+  } else {
+    // if there is no local, use the instruction for globals
+    arg = identifierConstant(&name);
+    getOp = OP_GET_GLOBAL;
+    setOp = OP_SET_GLOBAL;
+  }
 
   if (canAssign && match(TOKEN_EQUAL)) {
     expression();
-    emitBytes(OP_SET_GLOBAL, arg);
+    emitBytes(setOp, arg);
   } else {
-    emitBytes(OP_GET_GLOBAL, arg);
+    emitBytes(getOp, arg);
   }
 }
 

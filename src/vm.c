@@ -16,6 +16,7 @@ VM vm;
 
 static void resetStack() {
   vm.stackTop = vm.stack;
+  vm.frameCount = 0;
 }
 
 static void runtimeError(const char* format, ...) {
@@ -26,8 +27,9 @@ static void runtimeError(const char* format, ...) {
   fputs("\n", stderr);
 
   // Failed instruction is previous one (IP moves before execution)
-  size_t instruction = vm.ip - vm.chunk->code -1;
-  int line = vm.chunk->lines[instruction];
+  CallFrame* frame = &vm.frames[vm.frameCount -1];
+  size_t instruction = frame->ip - frame->function->chunk.code - 1;
+  int line = frame->function->chunk.lines[instruction];
   fprintf(stderr, "[line %d] in script\n", line);
   resetStack();
 }
@@ -88,14 +90,15 @@ static void concatenate() {
 }
 
 static InterpretResult run() {
+  CallFrame* frame = &vm.frames[vm.frameCount - 1];
 // Reads the byte pointed to by ip and then advances it
-#define READ_BYTE() (*vm.ip++)
+#define READ_BYTE() (*frame->ip++)
 // Reads the next byte of bytecode, and looks up the Value in the chunks constant table
-#define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 // Yanks the next two bytes from the chunk and builds a 16 bit unsigned int from them
 #define READ_SHORT() \
-  (vm.ip +=2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
+  (frame->ip +=2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 // Binary Operators (main 4 binary ops are same but different C operator)
 // Do while loop in a macro is a C trick to attach block to a single scope
 // Takes the top two values (the operands) by popping
@@ -123,8 +126,8 @@ static InterpretResult run() {
     }
     printf("\n");
 // Print instructions as they are executed
-    disassembleInstruction(vm.chunk, 
-                            (int)(vm.ip - vm.chunk->code));
+    disassembleInstruction(&frame->function->chunk, 
+                            (int)(frame->ip - frame->function->chunk.code));
 #endif
     uint8_t instruction;
     switch (instruction = READ_BYTE()) {
@@ -203,12 +206,12 @@ static InterpretResult run() {
       }
       case OP_GET_LOCAL: {
         uint8_t slot = READ_BYTE();
-        push(vm.stack[slot]);
+        push(frame->slots[slot]);
         break;
       }
       case OP_SET_LOCAL: {
         uint8_t slot = READ_BYTE();
-        vm.stack[slot] = peek(0);
+        frame->slots[slot] = peek(0);
         break;
       }
       case OP_JUMP_IF_FALSE: {
@@ -217,19 +220,19 @@ static InterpretResult run() {
         // we increment the instruction pointer by the offset
         // calculated in compilation, this will 'jump' to
         // the end of the 'then' branch
-        if (isFalsey(peek(0))) vm.ip += offset;
+        if (isFalsey(peek(0))) frame->ip += offset;
         break;
       }
       case OP_JUMP: {
         uint16_t offset = READ_SHORT();
-        vm.ip += offset;
+        frame->ip += offset;
         break;
       }
       case OP_LOOP: {
         uint16_t offset = READ_SHORT();
         // Move the instruction pointer backwards by the offset,
         // this takes us to the start of the loop
-        vm.ip -= offset;
+        frame->ip -= offset;
         break;
       }
       case OP_RETURN: {
@@ -248,20 +251,13 @@ static InterpretResult run() {
 }
 
 InterpretResult interpret(const char* source) {
-  Chunk chunk;
-  initChunk(&chunk);
+  ObjFunction* function = compile(source);
+  if (function == NULL) return INTERPRET_COMPILE_ERROR;
+  push(OBJ_VAL(function));
+  CallFrame* frame = &vm.frames[vm.frameCount++];
+  frame->function = function;
+  frame->ip = function->chunk.code;
+  frame->slots = vm.stack;
 
-  if (!compile(source, &chunk)) {
-    freeChunk(&chunk);
-    return INTERPRET_COMPILE_ERROR;
-  }
-
-  // Fill the chunk with the compiled bytecode
-  vm.chunk = &chunk;
-  vm.ip = vm.chunk->code;
-
-  InterpretResult result = run();
-
-  freeChunk(&chunk);
-  return result;
+  return run();
 }

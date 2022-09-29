@@ -30,6 +30,13 @@ ObjFunction* newFunction() {
   return function;
 }
 
+ObjNative* newNative(NativeFn function) {
+  // Wraps a C function pointer in an ObjNative lox object
+  ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+  native->function = function;
+  return native;
+}
+
 // Allocates a string object, pointing to the given characters
 static ObjString* allocateString(char* chars, int length, uint32_t hash) {
   ObjString* string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
@@ -94,6 +101,9 @@ static void printFunction(ObjFunction* function) {
 
 void printObject(Value value) {
   switch (OBJ_TYPE(value)) {
+    case OBJ_NATIVE:
+      printf("<native fn>");
+      break;
     case OBJ_FUNCTION:
       printFunction(AS_FUNCTION(value));
       break;

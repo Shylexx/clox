@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
 
 #include "chunk.h"
 #include "common.h"
@@ -14,6 +15,10 @@
 
 VM vm;
 
+static Value clockNative(int argCount, Value* args) {
+  return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
 static void resetStack() {
   vm.stackTop = vm.stack;
   vm.frameCount = 0;
@@ -26,12 +31,31 @@ static void runtimeError(const char* format, ...) {
   va_end(args);
   fputs("\n", stderr);
 
-  // Failed instruction is previous one (IP moves before execution)
-  CallFrame* frame = &vm.frames[vm.frameCount -1];
-  size_t instruction = frame->ip - frame->function->chunk.code - 1;
-  int line = frame->function->chunk.lines[instruction];
-  fprintf(stderr, "[line %d] in script\n", line);
+  for (int i = vm.frameCount - 1; i >= 0; i--) {
+    CallFrame* frame = &vm.frames[i];
+    ObjFunction* function = frame->function;
+    // Index of errored instruction is previous to ip, (ip has moved before executing error-ing code)
+    size_t instruction = frame->ip - function->chunk.code - 1;
+    fprintf(stderr, "[line %d] in ",
+        function->chunk.lines[instruction]);
+    if (function->name == NULL) {
+      fprintf(stderr, "script\n");
+    } else {
+      fprintf(stderr, "%s()\n", function->name->chars);
+    }
+  }
+
   resetStack();
+}
+
+// takes a pointer to a c function and the name for it in lox.
+// wraps the function in an objnative and then store it globally
+static void defineNative(const char* name, NativeFn function) {
+  push(OBJ_VAL(copyString(name, (int)strlen(name))));
+  push(OBJ_VAL(newNative(function)));
+  tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+  pop();
+  pop();
 }
 
 void initVM() {
@@ -39,6 +63,9 @@ void initVM() {
   vm.objects = NULL;
   initTable(&vm.globals);
   initTable(&vm.strings);
+
+  // Define native functions
+  defineNative("clock", clockNative);
 }
 
 void freeVM() {
@@ -70,6 +97,52 @@ static Value peek(int distance) {
   return vm.stackTop[-1 - distance];
 }
 
+static bool call(ObjFunction* function, int argCount) {
+  // Ensure args passed to function are correct amount
+  if (argCount != function->arity) {
+    runtimeError("Expected %d arguments, but got %d.",
+        function->arity, argCount);
+    return false;
+  }
+
+  if (vm.frameCount == FRAMES_MAX) {
+    runtimeError("Stack overflow. Is your recursive code recursing too far?");
+    return false;
+  }
+
+  // Initializes the next callframe on the stack
+  CallFrame* frame = &vm.frames[vm.frameCount++];
+  // Set this frame to be the called function
+  frame->function = function;
+  frame->ip = function->chunk.code;
+  // Sets up slots pointer to get the correct window into the stack
+  // Arithmetic ensures the args on the stack line up with the fn params (-1 accounts for slot 0,
+  // set aside for when methods are added later)
+  frame->slots = vm.stackTop - argCount -1;
+  // Return true as call successful
+  return true;
+}
+
+static bool callValue(Value callee, int argCount) {
+  if (IS_OBJ(callee)) {
+    switch (OBJ_TYPE(callee)) {
+      case OBJ_FUNCTION:
+        return call(AS_FUNCTION(callee), argCount);
+      case OBJ_NATIVE: {
+        NativeFn native = AS_NATIVE(callee);
+        Value result = native(argCount, vm.stackTop - argCount);
+        vm.stackTop -= argCount +1;
+        push(result);
+        return true;
+      }
+      default:
+        break; // non callable object type.
+    }
+  }
+  runtimeError("Can only call functions and classes.");
+  return false;
+}
+
 // Nil and False are falsey, all else is truthy
 static bool isFalsey(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
@@ -91,6 +164,7 @@ static void concatenate() {
 
 static InterpretResult run() {
   CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
 // Reads the byte pointed to by ip and then advances it
 #define READ_BYTE() (*frame->ip++)
 // Reads the next byte of bytecode, and looks up the Value in the chunks constant table
@@ -98,7 +172,8 @@ static InterpretResult run() {
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 // Yanks the next two bytes from the chunk and builds a 16 bit unsigned int from them
 #define READ_SHORT() \
-  (frame->ip +=2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+  (frame->ip += 2, \
+  (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 // Binary Operators (main 4 binary ops are same but different C operator)
 // Do while loop in a macro is a C trick to attach block to a single scope
 // Takes the top two values (the operands) by popping
@@ -235,9 +310,31 @@ static InterpretResult run() {
         frame->ip -= offset;
         break;
       }
+      case OP_CALL: {
+        int argCount = READ_BYTE();
+        if (!callValue(peek(argCount), argCount)) {
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        // If no error, we update the frame pointer to the new frame made by the call
+        frame = &vm.frames[vm.frameCount - 1];
+        break;
+      }
       case OP_RETURN: {
-        // Exit interpreter
-        return INTERPRET_OK;
+        // Pop the return value of a function off the stack
+        // before we delete 
+        Value result = pop();
+        vm.frameCount--;
+
+        // if there are no frames left, we are on the top leve and so exit the interpeter
+        if (vm.frameCount == 0) {
+          pop();
+          return INTERPRET_OK;
+        }
+
+        vm.stackTop = frame->slots;
+        push(result);
+        frame = &vm.frames[vm.frameCount - 1];
+        break;
       }
     }
   }
@@ -251,13 +348,14 @@ static InterpretResult run() {
 }
 
 InterpretResult interpret(const char* source) {
+  printf("Start compilation");
   ObjFunction* function = compile(source);
   if (function == NULL) return INTERPRET_COMPILE_ERROR;
+  printf("Compile successful");
   push(OBJ_VAL(function));
-  CallFrame* frame = &vm.frames[vm.frameCount++];
-  frame->function = function;
-  frame->ip = function->chunk.code;
-  frame->slots = vm.stack;
+  // Script body serves as a giant 'main' function
+  // Call the initial function
+  call(function, 0);
 
   return run();
 }

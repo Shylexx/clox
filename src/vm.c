@@ -348,10 +348,8 @@ static InterpretResult run() {
 }
 
 InterpretResult interpret(const char* source) {
-  printf("Start compilation");
   ObjFunction* function = compile(source);
   if (function == NULL) return INTERPRET_COMPILE_ERROR;
-  printf("Compile successful");
   push(OBJ_VAL(function));
   // Script body serves as a giant 'main' function
   // Call the initial function

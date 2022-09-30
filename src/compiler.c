@@ -155,7 +155,7 @@ static int emitJump(uint8_t instruction) {
   emitByte(0xff);
   emitByte(0xff);
   // returns offset of emitted instruction
-  return currentChunk()->count -1;
+  return currentChunk()->count -2;
 }
 
 // Goes backwards in the bytecode and replaced operand
